@@ -819,6 +819,70 @@ def fetch_chutes_models(logger):
     return sorted(free_models, key=lambda x: x["name"])
 
 
+def fetch_opencode_zen_models(logger):
+    """
+    获取 OpenCode Zen 平台的免费模型列表
+    
+    参数:
+        logger: 日志记录器
+    
+    返回:
+        模型列表，包含 DeepSeek V4 Flash 等免费模型
+    """
+    logger.info("Fetching OpenCode Zen models...")
+    try:
+        api_key = os.environ['OPENCODE_ZEN_API_KEY']
+        # OpenCode Zen 可能使用类似 OpenAI 的 API 格式
+        r = requests.get(
+            "https://api.opencode.ai/v1/models",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        models_data = r.json().get("data", [])
+        
+        ret_models = []
+        for model in models_data:
+            model_id = model.get("id", "")
+            model_name = model.get("name", model_id)
+            
+            # 只保留免费模型
+            if "free" in model_id.lower() or model.get("pricing", {}).get("prompt", 1) == 0:
+                ret_models.append({
+                    "id": model_id,
+                    "name": get_model_name(model_id),
+                })
+        
+        logger.info(f"Fetched {len(ret_models)} models from OpenCode Zen")
+        return sorted(ret_models, key=lambda x: x["name"])
+        
+    except KeyError as e:
+        logger.error(f"Missing environment variable: {e}")
+        logger.error("Skipping OpenCode Zen models.")
+        return []
+    except Exception as e:
+        logger.error(f"Failed to fetch OpenCode Zen models: {e}")
+        logger.info("Using static model list for OpenCode Zen")
+        # 如果 API 失败，返回已知的静态模型列表
+        return [
+            {
+                "id": "big-pickle-stealth",
+                "name": "Big Pickle Stealth",
+            },
+            {
+                "id": "nemotron-3-super-free",
+                "name": "Nemotron 3 Super Free",
+            },
+            {
+                "id": "deepseek-v4-flash-free",
+                "name": "DeepSeek V4 Flash Free",
+            },
+        ]
+
+
 def get_human_limits(model, seperator="<br>"):
     if "limits" not in model:
         return ""
