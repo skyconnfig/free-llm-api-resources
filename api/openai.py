@@ -312,7 +312,7 @@ def call_cohere_model(model, messages, max_tokens, temperature, logger):
     logger.info(f"调用 Cohere 模型: {cohere_model}")
     
     response = requests.post(
-        "https://api.cohere.com/v1/chat",
+        "https://api.cohere.ai/v2/chat",
         headers={
             "Authorization": f"Bearer {COHERE_API_KEY}",
             "Content-Type": "application/json",
