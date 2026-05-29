@@ -21,6 +21,7 @@ from pull_available_models import (
     fetch_samba_models,
     fetch_scaleway_models,
     fetch_cohere_models,
+    fetch_opencode_zen_models,
     fetch_gemini_limits,
     create_logger,
 )
@@ -188,6 +189,22 @@ def generate_model_list():
             logger.info(f"成功获取 {len(cohere_models)} 个 Cohere 模型")
     except Exception as e:
         logger.error(f"获取 Cohere 模型失败: {e}")
+    
+    # 9. OpenCode Zen - AI 网关平台
+    # API: https://opencode.ai/docs/zen/
+    try:
+        logger.info("正在获取 OpenCode Zen 模型...")
+        opencode_models = fetch_opencode_zen_models(logger)
+        if opencode_models:
+            result["providers"]["opencode_zen"] = {
+                "name": "OpenCode Zen",
+                "url": "https://opencode.ai/docs/zen/",
+                "description": "AI 网关平台，提供 DeepSeek V4 Flash 等免费模型",
+                "models": opencode_models
+            }
+            logger.info(f"成功获取 {len(opencode_models)} 个 OpenCode Zen 模型")
+    except Exception as e:
+        logger.error(f"获取 OpenCode Zen 模型失败: {e}")
     
     # 9. Google AI Studio - Gemini 模型
     # 使用 Google Cloud Quotas API 获取配额信息
