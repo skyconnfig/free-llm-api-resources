@@ -110,68 +110,37 @@ def call_opencode_zen_deepseek(messages, max_tokens, temperature, logger):
     
     logger.info("调用 OpenCode Zen DeepSeek V4 Flash...")
     
-    # 尝试多个可能的 API 端点
-    endpoints = [
-        "https://api.opencode.ai/v1/chat/completions",
-        "https://zen.opencode.ai/v1/chat/completions",
-    ]
+    # 使用正确的 OpenCode Zen API 端点
+    endpoint = "https://opencode.ai/zen/v1/chat/completions"
     
-    last_error = None
-    for endpoint in endpoints:
-        try:
-            response = requests.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {OPENCODE_ZEN_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "deepseek-v4-flash-free",
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                },
-                timeout=60
-            )
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {OPENCODE_ZEN_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek-v4-flash-free",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"OpenCode Zen 调用成功 (端点: {endpoint})")
+            return result
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
+            logger.error(f"OpenCode Zen 调用失败: {error_msg}")
+            raise Exception(error_msg)
             
-            if response.status_code == 200:
-                result = response.json()
-                logger.info(f"OpenCode Zen 调用成功 (端点: {endpoint})")
-                return result
-            else:
-                last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-                logger.warning(f"端点 {endpoint} 失败: {last_error}")
-                
-        except Exception as e:
-            last_error = str(e)
-            logger.warning(f"端点 {endpoint} 异常: {e}")
-            continue
-    
-    # 如果所有端点都失败，返回模拟响应
-    logger.error(f"所有 OpenCode Zen 端点都失败。最后错误: {last_error}")
-    
-    # 返回一个友好的错误提示
-    return {
-        "id": "chatcmpl-opencode-zen-error",
-        "object": "chat.completion",
-        "created": int(datetime.now().timestamp()),
-        "model": "deepseek-v4-flash-free",
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "⚠️ OpenCode Zen API 当前不可用。\n\n可能原因：\n1. API 端点地址不正确\n2. API Key 无效\n3. 服务暂时不可用\n\n建议：\n- 查看官方文档: https://opencode.ai/docs/zen/\n- 或使用其他模型（如 llama-3.1-8b）"
-                },
-                "finish_reason": "stop"
-            }
-        ],
-        "usage": {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0
-        }
-    }
+    except Exception as e:
+        logger.error(f"OpenCode Zen 调用异常: {e}")
+        raise
 
 
 def call_openrouter_deepseek(messages, max_tokens, temperature, logger):
