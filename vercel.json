@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/lite.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/models",
+      "dest": "api/index.py"
+    },
+    {
+      "src": "/api/models/lite",
+      "dest": "api/lite.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/lite.py"
+    }
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "true"
+  }
+}
