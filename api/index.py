@@ -212,44 +212,31 @@ def generate_model_list():
     return result
 
 
-# Vercel handler - 简单的 HTTP 处理函数
-def handler(request, response):
+# Vercel app - 必须命名为 app
+def app(environ, start_response):
     """
-    Vercel Serverless Function 处理器
+    WSGI application for Vercel
     """
-    from http.server import BaseHTTPRequestHandler
-    import io
-    
-    # 创建请求和响应对象
-    class SimpleHandler(BaseHTTPRequestHandler):
-        def __init__(self, request_data):
-            self.rfile = io.BytesIO(request_data)
-            self.wfile = io.BytesIO()
-            self._headers_buffer = []
-            
-        def send_response(self, code, message=None):
-            self._headers_buffer.append(f"HTTP/1.1 {code} OK\r\n".encode())
-            
-        def send_header(self, keyword, value):
-            self._headers_buffer.append(f"{keyword}: {value}\r\n".encode())
-            
-        def end_headers(self):
-            self._headers_buffer.append(b"\r\n")
-            
-        def log_message(self, format, *args):
-            pass  # 禁用日志
-    
     # 处理 GET 请求
-    if request.method == 'GET':
+    if environ['REQUEST_METHOD'] == 'GET':
         try:
             model_data = generate_model_list()
-            response.status_code = 200
-            response.headers['Content-Type'] = 'application/json'
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            return model_data
+            status = '200 OK'
+            headers = [
+                ('Content-Type', 'application/json'),
+                ('Access-Control-Allow-Origin', '*'),
+            ]
+            start_response(status, headers)
+            import json
+            return [json.dumps(model_data, ensure_ascii=False).encode('utf-8')]
         except Exception as e:
-            response.status_code = 500
-            return {"error": str(e)}
+            status = '500 Internal Server Error'
+            headers = [('Content-Type', 'application/json')]
+            start_response(status, headers)
+            import json
+            return [json.dumps({"error": str(e)}).encode('utf-8')]
     else:
-        response.status_code = 405
-        return {"error": "Method not allowed"}
+        status = '405 Method Not Allowed'
+        headers = [('Content-Type', 'application/json')]
+        start_response(status, headers)
+        return [b'{"error": "Method not allowed"}']
