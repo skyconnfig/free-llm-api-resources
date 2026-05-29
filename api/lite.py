@@ -107,38 +107,22 @@ def generate_lightweight_model_list():
     return result
 
 
-# Vercel handler - 必须导出为 app
-from http.server import BaseHTTPRequestHandler
-import json
-
-class app(BaseHTTPRequestHandler):
+# Vercel handler - 简单的 HTTP 处理函数
+def handler(request, response):
     """
     Vercel Serverless Function 处理器
     """
-    
-    def do_GET(self):
-        # 设置 CORS 头
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-        
+    # 处理 GET 请求
+    if request.method == 'GET':
         try:
             model_data = generate_lightweight_model_list()
-            response = json.dumps(model_data, ensure_ascii=False, indent=2)
-            self.wfile.write(response.encode('utf-8'))
+            response.status_code = 200
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return model_data
         except Exception as e:
-            error_response = json.dumps({
-                "error": str(e),
-                "message": "服务器内部错误"
-            }, ensure_ascii=False)
-            self.wfile.write(error_response.encode('utf-8'))
-    
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+            response.status_code = 500
+            return {"error": str(e)}
+    else:
+        response.status_code = 405
+        return {"error": "Method not allowed"}

@@ -212,54 +212,44 @@ def generate_model_list():
     return result
 
 
-# Vercel handler - 必须导出为 app
-from http.server import BaseHTTPRequestHandler
-
-class app(BaseHTTPRequestHandler):
+# Vercel handler - 简单的 HTTP 处理函数
+def handler(request, response):
     """
     Vercel Serverless Function 处理器
-    处理 GET 请求并返回模型列表
     """
+    from http.server import BaseHTTPRequestHandler
+    import io
     
-    def do_GET(self):
-        """
-        处理 GET 请求
-        路径: / 或 /api/models
-        返回: JSON 格式的模型列表
-        """
+    # 创建请求和响应对象
+    class SimpleHandler(BaseHTTPRequestHandler):
+        def __init__(self, request_data):
+            self.rfile = io.BytesIO(request_data)
+            self.wfile = io.BytesIO()
+            self._headers_buffer = []
+            
+        def send_response(self, code, message=None):
+            self._headers_buffer.append(f"HTTP/1.1 {code} OK\r\n".encode())
+            
+        def send_header(self, keyword, value):
+            self._headers_buffer.append(f"{keyword}: {value}\r\n".encode())
+            
+        def end_headers(self):
+            self._headers_buffer.append(b"\r\n")
+            
+        def log_message(self, format, *args):
+            pass  # 禁用日志
+    
+    # 处理 GET 请求
+    if request.method == 'GET':
         try:
-            # 生成模型列表
             model_data = generate_model_list()
-            
-            # 设置响应头
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-            self.end_headers()
-            
-            # 返回 JSON 数据
-            response = json.dumps(model_data, ensure_ascii=False, indent=2)
-            self.wfile.write(response.encode('utf-8'))
-            
+            response.status_code = 200
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return model_data
         except Exception as e:
-            # 错误处理
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            error_response = json.dumps({
-                "error": str(e),
-                "message": "服务器内部错误"
-            }, ensure_ascii=False)
-            self.wfile.write(error_response.encode('utf-8'))
-    
-    def do_OPTIONS(self):
-        """
-        处理 CORS 预检请求
-        """
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+            response.status_code = 500
+            return {"error": str(e)}
+    else:
+        response.status_code = 405
+        return {"error": "Method not allowed"}
