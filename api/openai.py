@@ -7,6 +7,7 @@ OpenAI 兼容的 API 端点
 import json
 import os
 import sys
+import requests
 from datetime import datetime
 
 # 添加 src 目录到路径
@@ -70,8 +71,6 @@ def route_to_provider(model, messages, max_tokens, temperature, logger):
     根据模型 ID 路由到不同的提供商
     支持所有已配置的供应商
     """
-    import requests
-    
     model_lower = model.lower()
     
     # DeepSeek V4 Flash - 使用 OpenCode Zen
