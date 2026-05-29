@@ -107,31 +107,38 @@ def generate_lightweight_model_list():
     return result
 
 
-def handler(req, res):
+# Vercel handler - 必须导出为 app
+from http.server import BaseHTTPRequestHandler
+import json
+
+class app(BaseHTTPRequestHandler):
     """
     Vercel Serverless Function 处理器
     """
-    # 设置 CORS 头
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     
-    if req.method == 'OPTIONS':
-        res.status_code = 200
-        return {}
-    
-    if req.method == 'GET':
+    def do_GET(self):
+        # 设置 CORS 头
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+        
         try:
             model_data = generate_lightweight_model_list()
-            res.status_code = 200
-            res.setHeader('Content-Type', 'application/json; charset=utf-8')
-            return model_data
+            response = json.dumps(model_data, ensure_ascii=False, indent=2)
+            self.wfile.write(response.encode('utf-8'))
         except Exception as e:
-            res.status_code = 500
-            return {
+            error_response = json.dumps({
                 "error": str(e),
                 "message": "服务器内部错误"
-            }
-    else:
-        res.status_code = 405
-        return {"error": "Method not allowed"}
+            }, ensure_ascii=False)
+            self.wfile.write(error_response.encode('utf-8'))
+    
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()

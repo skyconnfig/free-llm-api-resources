@@ -212,9 +212,12 @@ def generate_model_list():
     return result
 
 
-class handler(BaseHTTPRequestHandler):
+# Vercel handler - 必须导出为 app
+from http.server import BaseHTTPRequestHandler
+
+class app(BaseHTTPRequestHandler):
     """
-    HTTP 请求处理器
+    Vercel Serverless Function 处理器
     处理 GET 请求并返回模型列表
     """
     
@@ -260,24 +263,3 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-
-
-# Vercel handler 函数
-def handler_wrapper(req, res):
-    """
-    Vercel Serverless Function 处理器
-    适配 Vercel 的请求/响应格式
-    """
-    if req.method == 'GET':
-        try:
-            model_data = generate_model_list()
-            res.status_code = 200
-            res.headers['Content-Type'] = 'application/json'
-            res.headers['Access-Control-Allow-Origin'] = '*'
-            return model_data
-        except Exception as e:
-            res.status_code = 500
-            return {"error": str(e)}
-    else:
-        res.status_code = 405
-        return {"error": "Method not allowed"}
