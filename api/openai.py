@@ -68,19 +68,35 @@ def chat_completions(environ, start_response):
 def route_to_provider(model, messages, max_tokens, temperature, logger):
     """
     根据模型 ID 路由到不同的提供商
+    支持所有已配置的供应商
     """
     import requests
     
+    model_lower = model.lower()
+    
     # DeepSeek V4 Flash - 使用 OpenCode Zen
-    if 'deepseek' in model.lower() and 'v4' in model.lower():
+    if 'deepseek' in model_lower and ('v4' in model_lower or 'flash' in model_lower):
         return call_opencode_zen_deepseek(messages, max_tokens, temperature, logger)
     
-    # Llama 3.1 - 使用 Groq
-    elif 'llama' in model.lower():
+    # Llama 系列 - 使用 Groq
+    elif 'llama' in model_lower:
         return call_groq_llama(messages, max_tokens, temperature, logger)
     
-    # 默认使用 Groq
+    # Cohere 模型
+    elif 'command' in model_lower or 'cohere' in model_lower:
+        return call_cohere_model(model, messages, max_tokens, temperature, logger)
+    
+    # Cloudflare Workers AI 模型
+    elif 'cf-' in model_lower or '@cf/' in model_lower:
+        return call_cloudflare_model(model, messages, max_tokens, temperature, logger)
+    
+    # Hyperbolic 模型
+    elif 'hyperbolic' in model_lower or any(x in model_lower for x in ['mistral', 'mixtral']):
+        return call_hyperbolic_model(model, messages, max_tokens, temperature, logger)
+    
+    # 默认使用 Groq（最稳定的免费服务）
     else:
+        logger.info(f"未识别模型 {model}，使用默认 Groq")
         return call_groq_llama(messages, max_tokens, temperature, logger)
 
 
@@ -277,12 +293,189 @@ def call_groq_llama(messages, max_tokens, temperature, logger):
     return result
 
 
+def call_cohere_model(model, messages, max_tokens, temperature, logger):
+    """
+    调用 Cohere 模型
+    """
+    COHERE_API_KEY = os.environ.get('COHERE_API_KEY', '')
+    
+    if not COHERE_API_KEY:
+        raise Exception("Cohere API Key 未配置")
+    
+    # 如果只提供了简写，转换为完整模型 ID
+    if model == 'command' or model == 'command-r':
+        cohere_model = 'command-r'
+    elif model == 'command-r-plus':
+        cohere_model = 'command-r-plus'
+    else:
+        cohere_model = model
+    
+    logger.info(f"调用 Cohere 模型: {cohere_model}")
+    
+    response = requests.post(
+        "https://api.cohere.com/v1/chat",
+        headers={
+            "Authorization": f"Bearer {COHERE_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": cohere_model,
+            "message": messages[-1]['content'],  # Cohere 使用 message 而不是 messages
+            "chat_history": [
+                {
+                    "role": "USER" if msg['role'] == 'user' else "CHATBOT",
+                    "message": msg['content']
+                }
+                for msg in messages[:-1]
+            ] if len(messages) > 1 else [],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60
+    )
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    # 转换 Cohere 响应格式为 OpenAI 格式
+    openai_format = {
+        "id": f"chatcmpl-cohere-{result.get('generation_id', '')}",
+        "object": "chat.completion",
+        "created": int(datetime.now().timestamp()),
+        "model": cohere_model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": result.get('text', '')
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": result.get('meta', {}).get('tokens', {}).get('input_tokens', 0),
+            "completion_tokens": result.get('meta', {}).get('tokens', {}).get('output_tokens', 0),
+            "total_tokens": sum(result.get('meta', {}).get('tokens', {}).values())
+        }
+    }
+    
+    logger.info(f"Cohere 调用成功")
+    return openai_format
+
+
+def call_cloudflare_model(model, messages, max_tokens, temperature, logger):
+    """
+    调用 Cloudflare Workers AI 模型
+    """
+    CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
+    CLOUDFLARE_API_KEY = os.environ.get('CLOUDFLARE_API_KEY', '')
+    
+    if not CLOUDFLARE_ACCOUNT_ID or not CLOUDFLARE_API_KEY:
+        raise Exception("Cloudflare API 凭证未配置")
+    
+    # 提取模型名称（去除 cf- 或 @cf/ 前缀）
+    if model.startswith('cf-'):
+        cf_model = model[3:]
+    elif model.startswith('@cf/'):
+        cf_model = model[4:]
+    else:
+        cf_model = model
+    
+    logger.info(f"调用 Cloudflare 模型: {cf_model}")
+    
+    url = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/{cf_model}"
+    
+    response = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {CLOUDFLARE_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60
+    )
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    # 转换 Cloudflare 响应格式为 OpenAI 格式
+    openai_format = {
+        "id": f"chatcmpl-cf-{int(datetime.now().timestamp())}",
+        "object": "chat.completion",
+        "created": int(datetime.now().timestamp()),
+        "model": cf_model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": result.get('result', {}).get('response', '')
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
+    }
+    
+    logger.info(f"Cloudflare 调用成功")
+    return openai_format
+
+
+def call_hyperbolic_model(model, messages, max_tokens, temperature, logger):
+    """
+    调用 Hyperbolic 模型
+    """
+    HYPERBOLIC_API_KEY = os.environ.get('HYPERBOLIC_API_KEY', '')
+    
+    if not HYPERBOLIC_API_KEY:
+        raise Exception("Hyperbolic API Key 未配置")
+    
+    # 提取实际模型名称
+    if model.startswith('hyperbolic-'):
+        hyper_model = model[len('hyperbolic-'):]
+    else:
+        hyper_model = model
+    
+    logger.info(f"调用 Hyperbolic 模型: {hyper_model}")
+    
+    response = requests.post(
+        "https://api.hyperbolic.xyz/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {HYPERBOLIC_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": hyper_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60
+    )
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    logger.info(f"Hyperbolic 调用成功")
+    return result
+
+
 def models_list(environ, start_response):
     """
     返回可用的模型列表
     GET /v1/models
     """
     models = [
+        # OpenCode Zen - DeepSeek V4 Flash
         {
             "id": "deepseek-v4-flash",
             "object": "model",
@@ -290,12 +483,76 @@ def models_list(environ, start_response):
             "owned_by": "opencode-zen",
             "description": "DeepSeek V4 Flash Free - 完全免费"
         },
+        
+        # Groq - Llama 系列
         {
             "id": "llama-3.1-8b",
             "object": "model",
             "created": 1700000000,
             "owned_by": "groq",
             "description": "Llama 3.1 8B - 超高速推理"
+        },
+        {
+            "id": "llama-3.2-11b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "groq",
+            "description": "Llama 3.2 11B Vision"
+        },
+        {
+            "id": "llama-3.3-70b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "groq",
+            "description": "Llama 3.3 70B"
+        },
+        
+        # Cohere 模型
+        {
+            "id": "command-r",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "cohere",
+            "description": "Cohere Command R - 高效对话模型"
+        },
+        {
+            "id": "command-r-plus",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "cohere",
+            "description": "Cohere Command R+ - 高级对话模型"
+        },
+        
+        # Cloudflare Workers AI 模型
+        {
+            "id": "cf-llama-3-8b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "cloudflare",
+            "description": "Cloudflare Llama 3 8B - 边缘推理"
+        },
+        {
+            "id": "cf-mistral-7b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "cloudflare",
+            "description": "Cloudflare Mistral 7B - 边缘推理"
+        },
+        
+        # Hyperbolic 模型
+        {
+            "id": "hyperbolic-mistral-7b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "hyperbolic",
+            "description": "Hyperbolic Mistral 7B - 去中心化推理"
+        },
+        {
+            "id": "hyperbolic-mixtral-8x7b",
+            "object": "model",
+            "created": 1700000000,
+            "owned_by": "hyperbolic",
+            "description": "Hyperbolic Mixtral 8x7B - 去中心化推理"
         }
     ]
     
